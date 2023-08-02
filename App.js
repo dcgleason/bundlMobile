@@ -18,7 +18,7 @@ import * as SMS from 'expo-sms';
 
 
 
-function PaymentModal({ isModalVisible, setIsModalVisible, totalAmount, selectedContributors, sendWelcomeSMS, sendWelcomeEmail, selectedContributorsMobile, physicalBook, includeAudio, gifterEmail, hasPaid, setHasPaid }) {
+function PaymentModal({ isModalVisible, setIsModalVisible, totalAmount, gifterEmail, setHasPaid }) {
   const { createPaymentMethod, confirmPayment } = useStripe();
   const [isApplePaySupported, setIsApplePaySupported] = useState(false);
   const [cardDetails, setCardDetails] = useState(null);
@@ -37,7 +37,7 @@ function PaymentModal({ isModalVisible, setIsModalVisible, totalAmount, selected
       alert('Please enter complete card details');
       return;
     }
-
+  
     // Create a payment method from the card details
     const { error: paymentMethodError, paymentMethod } = await createPaymentMethod({
       paymentMethodType: 'Card',
@@ -48,7 +48,7 @@ function PaymentModal({ isModalVisible, setIsModalVisible, totalAmount, selected
       setIsErrorModalVisible(true);  // Show error modal
       return;
     }
-
+  
     // Create a payment intent on the server
     const response = await fetch('https://yay-api.herokuapp.com/stripe/secret', {
       method: 'POST',
@@ -56,20 +56,20 @@ function PaymentModal({ isModalVisible, setIsModalVisible, totalAmount, selected
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        email: gifterEmail, 
+        email: gifterEmail,
         amount: totalAmount,
       }),
     });
-
+  
     const data = await response.json();
     console.log('Payment intent created:', data);
-
+  
     // Confirm the payment
     const { error: confirmationError } = await confirmPayment(data.client_secret, {
       paymentMethodType: 'Card',
       paymentMethodId: paymentMethod.id,
     });
-
+  
     if (confirmationError) {
       console.log('Payment confirmation error:', confirmationError.message);
       setIsErrorModalVisible(true);  // Show error modal
@@ -79,16 +79,9 @@ function PaymentModal({ isModalVisible, setIsModalVisible, totalAmount, selected
       setIsModalVisible(false);
       setIsSuccessModalVisible(true);  // Show success modal
       setHasPaid(true);  // The user has paid
-      // Send the welcome messages
-      console.log('contributors', selectedContributors, selectedContributorsMobile);
-      if (selectedContributors.length > 0) {
-        sendWelcomeEmail(selectedContributors);
-      }
-      if (selectedContributorsMobile.length > 0) {
-        sendWelcomeSMS(selectedContributorsMobile);
-      }
     }
   };
+  
 
   
 
@@ -295,6 +288,10 @@ export default function App() {
 
         // Get the screen's height
 const screenHeight = Dimensions.get('window').height
+
+    useEffect(() => {
+      console.log('hasPaid:', hasPaid);
+    }, [hasPaid]);
 
 useEffect(() => {
   if (response?.type === 'success') {
@@ -863,11 +860,7 @@ useEffect(() => {
                   }
                 }
 
-                function handlePaymentSuccess() {
-                  // The user has successfully completed the payment
-                  setHasPaid(true);
-                }
-                
+             
  
         // async function submitAndSendWelcomeMessage(contributors) {
         //   // Calculate the total amount to charge
@@ -947,6 +940,27 @@ useEffect(() => {
             setTableData(newData);
           };
         
+       const handleCheckOut = () => {
+        // Calculate the total amount to charge
+        let totalAmount = 0;
+        if (physicalBook) {
+          totalAmount += 9900; // $99 in cents
+        }
+        if (includeAudio) {
+          totalAmount += 1500; // $15 in cents
+
+        }
+
+        // If there's a charge, open the payment modal
+        if (totalAmount > 0) {
+          setTotalAmount(totalAmount);
+          setIsPaymentModalVisible(true);
+        } else {
+          // If there's no charge, prompt the send message buttons to appear
+          setHasPaid(true);  
+
+        }
+      }
 
 
   return (
@@ -960,15 +974,13 @@ useEffect(() => {
             isModalVisible={isPaymentModalVisible}
             setIsModalVisible={setIsPaymentModalVisible}
             totalAmount={totalAmount}
-            physicalBook={physicalBook}
-            includeAudio={includeAudio}
             gifterEmail={gifterEmail}
             sendWelcomeEmail={sendWelcomeEmail}
             sendWelcomeSMS={sendWelcomeSMS}
             selectedContributorsMobile={selectedContactsMobile}
             selectedContributors={selectedContacts}
             hasPaid={hasPaid}
-            setHasPaid={handlePaymentSuccess}
+            setHasPaid={setHasPaid}
             />
         ) : null
       }
@@ -1246,42 +1258,59 @@ useEffect(() => {
 
                   <View style={styles.buttonContainer}>
 
-                  <View style={{flexDirection: 'column', alignItems: 'center'}}>
-                  <Switch
-                    value={includeAudio}
-                    onValueChange={setIncludeAudio}
-                  />
-                  <Text>Pay $15 to allow your contributors to record audio in addition to text and pictures</Text>
-                </View>
+        <View style={{flexDirection: 'column', alignItems: 'center'}}>
+            <Switch
+                value={includeAudio}
+                onValueChange={setIncludeAudio}
+            />
+            <Text>Pay $15 to allow your contributors to record audio in addition to text and pictures</Text>
+        </View>
 
-                  <View style={{flexDirection: 'column', alignItems: 'center'}}>
-                  <Switch
-                    value={physicalBook}
-                    onValueChange={setPhysicalBook}
-                  />
-                  <Text>Pay $99 to make this e-book a physical book</Text>
-                </View>
-                  <TouchableOpacity 
-                    style={styles.button} 
-                    onPress={() => submitAndSendWelcomeMessageEmail(tableData)}
-                  >
-                    <Text style={styles.buttonText}>
-                      Email welcome message to selected contributors
-                    </Text>
-                  </TouchableOpacity>
-              
-
-             
-                  <TouchableOpacity 
-                    style={styles.button} 
-                    onPress={() => submitAndSendWelcomeMessageSMS(tableData)}
-                  >
-                    <Text style={styles.buttonText}>
-                      Text welcome message to selected contributors
-                    </Text>
-                  </TouchableOpacity>
-              
+        <View style={{flexDirection: 'column', alignItems: 'center'}}>
+            <Switch
+                value={physicalBook}
+                onValueChange={setPhysicalBook}
+            />
+            <Text>Pay $99 to make this e-book a physical book</Text>
                   </View>
+
+          {( hasPaid && (!physicalBook && !includeAudio)) && (
+              <>
+                  {selectedContacts.length > 0 && (
+                      <TouchableOpacity 
+                          style={styles.button} 
+                          onPress={() => submitAndSendWelcomeMessageEmail(tableData)}
+                      >
+                          <Text style={styles.buttonText}>
+                              Email welcome message to selected contributors
+                          </Text>
+                      </TouchableOpacity>
+                  )}
+                  {selectedContactsMobile.length > 0 && (
+                      <TouchableOpacity 
+                          style={styles.button} 
+                          onPress={() => submitAndSendWelcomeMessageSMS(tableData)}
+                      >
+                          <Text style={styles.buttonText}>
+                              Text welcome message to selected contributors
+                          </Text>
+                      </TouchableOpacity>
+                  )}
+              </>
+          )}
+
+          {(!hasPaid && (physicalBook || includeAudio)) && (
+              <TouchableOpacity 
+                  style={styles.button} 
+                  onPress={handleCheckOut}
+              >
+                  <Text style={styles.buttonText}>
+                      Check out
+                  </Text>
+              </TouchableOpacity>
+          )}
+
+          </View>
               </View>
               </View >
       </ScrollView>
