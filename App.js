@@ -1135,17 +1135,9 @@ useEffect(() => {
                 </View>
 
                 <TouchableOpacity 
-                style={styles.button} onPress={() => submitAndSendWelcomeMessage(tableData)}
-                disabled={selectedContactsMobile.length === 0 && selectedContacts.length === 0} 
-                >
+                style={styles.button} onPress={() => submitAndSendWelcomeMessage(tableData)}                >
                 <Text style={styles.buttonText}>
-                  {selectedContactsMobile.length > 0 && selectedContacts.length > 0
-                    ? 'Text and email welcome message to selected contributors'
-                    : selectedContactsMobile.length > 0
-                    ? 'Text welcome message to selected contributors'
-                    : selectedContacts.length > 0
-                    ? 'Email welcome message to selected contributors'
-                    : 'Select contributors'}
+                  Send welcome message to selected contributors
                 </Text>
               </TouchableOpacity>
                   </View>
