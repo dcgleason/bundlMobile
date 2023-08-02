@@ -12,10 +12,13 @@ import { PlatformPayButton, isPlatformPaySupported } from '@stripe/stripe-react-
 import { Dimensions } from 'react-native';
 import { CardField, useStripe } from '@stripe/stripe-react-native';
 import { StripeProvider } from '@stripe/stripe-react-native';
+import * as MailComposer from 'expo-mail-composer';
+import * as SMS from 'expo-sms';
 
 
 
-function PaymentModal({ isModalVisible, setIsModalVisible, totalAmount, contributors, physicalBook, includeAudio, gifterEmail, sendWelcomeMessages }) {
+
+function PaymentModal({ isModalVisible, setIsModalVisible, totalAmount, selectedContributors, sendWelcomeSMS, sendWelcomeEmail, selectedContributorsMobile, physicalBook, includeAudio, gifterEmail, hasPaid, setHasPaid }) {
   const { createPaymentMethod, confirmPayment } = useStripe();
   const [isApplePaySupported, setIsApplePaySupported] = useState(false);
   const [cardDetails, setCardDetails] = useState(null);
@@ -75,11 +78,19 @@ function PaymentModal({ isModalVisible, setIsModalVisible, totalAmount, contribu
       console.log('Payment successful');
       setIsModalVisible(false);
       setIsSuccessModalVisible(true);  // Show success modal
+      setHasPaid(true);  // The user has paid
       // Send the welcome messages
-      console.log('contributors', contributors)
-      sendWelcomeMessages(contributors);
+      console.log('contributors', selectedContributors, selectedContributorsMobile);
+      if (selectedContributors.length > 0) {
+        sendWelcomeEmail(selectedContributors);
+      }
+      if (selectedContributorsMobile.length > 0) {
+        sendWelcomeSMS(selectedContributorsMobile);
+      }
     }
   };
+
+  
 
   return (
     <View>
@@ -212,6 +223,8 @@ export default function App() {
         const [isTableModalVisible, setIsTableModalVisible] = useState(false);
         const [gifterEmail, setGifterEmail] = useState("");
         const [gifterFullName, setGifterFullName] = useState("");
+        const [hasPaid, setHasPaid] = useState(false);
+
 
 
         const [emailBody, setEmailBody] = useState('');
@@ -761,9 +774,7 @@ useEffect(() => {
           setIsModalVisible(false);
         };
 
-
- 
-        async function submitAndSendWelcomeMessage(contributors) {
+        async function submitAndSendWelcomeMessageEmail(contributors) {
           // Calculate the total amount to charge
           let totalAmount = 0;
           if (physicalBook) {
@@ -772,34 +783,147 @@ useEffect(() => {
           if (includeAudio) {
             totalAmount += 1500; // $15 in cents
           }
-        
-          // If there's a charge, open the payment modal
+          
+          // If there's a charge, check if the user has paid
           if (totalAmount > 0) {
-            setTotalAmount(totalAmount);
-            setIsPaymentModalVisible(true); // if payment method is sucessfull send messages the same way as if the user diddn't select includeAudio / physicalBook
+            if (hasPaid) {
+              // If the user has paid, send the welcome email directly
+              sendWelcomeEmail(contributors);
+            } else {
+              // If the user hasn't paid, open the payment modal
+              setTotalAmount(totalAmount);
+              setIsPaymentModalVisible(true);
+            }
           } else {
-            // If there's no charge, send the welcome messages directly
-            sendWelcomeMessages(contributors);
+            // If there's no charge, send the welcome email directly
+            sendWelcomeEmail(contributors);
           }
         }
+      
+            async function submitAndSendWelcomeMessageSMS(contributors) {
+              // Calculate the total amount to charge
+              let totalAmount = 0;
+              if (physicalBook) {
+                totalAmount += 9900; // $99 in cents
+              }
+              if (includeAudio) {
+                totalAmount += 1500; // $15 in cents
+              }
+              
+              // If there's a charge, check if the user has paid
+              if (totalAmount > 0) {
+                if (hasPaid) {
+                  // If the user has paid, send the welcome SMS directly
+                  sendWelcomeSMS(contributors);
+                } else {
+                  // If the user hasn't paid, open the payment modal
+                  setTotalAmount(totalAmount);
+                  setIsPaymentModalVisible(true);
+                }
+              } else {
+                // If there's no charge, send the welcome SMS directly
+                sendWelcomeSMS(contributors);
+              }
+            }
+
+                async function sendWelcomeEmail(contributors) {
+                  // Prepare a group email for all contributors with an email address
+                  const emails = contributors.flatMap(contributor => contributor.emailAddresses || []).map(emailObj => emailObj.value);
+                  if (emails.length > 0) {
+                    const mailOptions = {
+                      recipients: emails,
+                      subject: 'Welcome to the project!',
+                      body: 'Thank you for contributing to our project. We appreciate your support!',
+                    };
+                    const isAvailable = await MailComposer.isAvailableAsync();
+                    if (isAvailable) {
+                      MailComposer.composeAsync(mailOptions).catch(err => console.error('Failed to send email:', err));
+                    } else {
+                      console.error('Mail is not available');
+                    }
+                  }
+                }
+                
+                async function sendWelcomeSMS(contributors) {
+                  // Prepare a group SMS for all contributors with a phone number
+                  const phones = contributors
+                    .map(contributor => contributor.phoneNumber.replace(/\D/g, ''))  // remove non-digit characters
+                    .filter(phone => phone);
+                  if (phones.length > 0) {
+                    const isAvailable = await SMS.isAvailableAsync();
+                    if (isAvailable) {
+                      try {
+                        await SMS.sendSMSAsync(phones, 'Thank you for contributing to our project. We appreciate your support!');
+                      } catch (err) {
+                        console.error('Failed to send SMS:', err);
+                      }
+                    } else {
+                      console.error('SMS is not available');
+                    }
+                  }
+                }
+
+                function handlePaymentSuccess() {
+                  // The user has successfully completed the payment
+                  setHasPaid(true);
+                }
+                
+ 
+        // async function submitAndSendWelcomeMessage(contributors) {
+        //   // Calculate the total amount to charge
+        //   let totalAmount = 0;
+        //   if (physicalBook) {
+        //     totalAmount += 9900; // $99 in cents
+        //   }
+        //   if (includeAudio) {
+        //     totalAmount += 1500; // $15 in cents
+        //   }
         
-        async function sendWelcomeMessages(contributors) {
-          // Prepare a group email for all contributors with an email address
-          const emails = contributors.flatMap(contributor => contributor.emailAddresses || []).map(emailObj => emailObj.value);
-          if (emails.length > 0) {
-            const emailUrl = `mailto:${emails.join(',')}?subject=Welcome to the project!&body=Thank you for contributing to our project. We appreciate your support!`;
-            Linking.openURL(emailUrl).catch(err => console.error('Failed to send email:', err));
-          }
+        //   // If there's a charge, open the payment modal
+        //   if (totalAmount > 0) {
+        //     setTotalAmount(totalAmount);
+        //     setIsPaymentModalVisible(true); // if payment method is sucessfull send messages the same way as if the user diddn't select includeAudio / physicalBook
+        //   } else {
+        //     // If there's no charge, send the welcome messages directly
+        //     sendWelcomeMessages(contributors);
+        //   }
+        // }
         
-          // Prepare a group SMS for all contributors with a phone number
-          const phones = contributors
-            .map(contributor => contributor.phoneNumber.replace(/\D/g, ''))  // remove non-digit characters
-            .filter(phone => phone);
-          if (phones.length > 0) {
-            const smsUrl = `sms:${phones.join(',')}?body=Thank you for contributing to our project. We appreciate your support!`;
-            Linking.openURL(smsUrl).catch(err => console.error('Failed to send SMS:', err));
-          }
-        }
+        // async function sendWelcomeMessages(contributors) {
+        //   // Prepare a group email for all contributors with an email address
+        //   const emails = contributors.flatMap(contributor => contributor.emailAddresses || []).map(emailObj => emailObj.value);
+        //   if (emails.length > 0) {
+        //     const mailOptions = {
+        //       recipients: emails,
+        //       subject: 'Welcome to the project!',
+        //       body: 'Thank you for contributing to our project. We appreciate your support!',
+        //     };
+        //     const isAvailable = await MailComposer.isAvailableAsync();
+        //     if (isAvailable) {
+        //       MailComposer.composeAsync(mailOptions).catch(err => console.error('Failed to send email:', err));
+        //     } else {
+        //       console.error('Mail is not available');
+        //     }
+        //   }
+        
+        //           // Prepare a group SMS for all contributors with a phone number
+        //   const phones = contributors
+        //   .map(contributor => contributor.phoneNumber.replace(/\D/g, ''))  // remove non-digit characters
+        //   .filter(phone => phone);
+        //   if (phones.length > 0) {
+        //   const isAvailable = await SMS.isAvailableAsync();
+        //   if (isAvailable) {
+        //     try {
+        //       await SMS.sendSMSAsync(phones, 'Thank you for contributing to our project. We appreciate your support!');
+        //     } catch (err) {
+        //       console.error('Failed to send SMS:', err);
+        //     }
+        //   } else {
+        //     console.error('SMS is not available');
+        //   }
+        //   }
+        // }
+
         
           const RenderRightActions = (progress, dragX, onPress) => {
             const scale = dragX.interpolate({
@@ -836,12 +960,16 @@ useEffect(() => {
             isModalVisible={isPaymentModalVisible}
             setIsModalVisible={setIsPaymentModalVisible}
             totalAmount={totalAmount}
-            contributors={contributors}  // Pass the contributors here
             physicalBook={physicalBook}
             includeAudio={includeAudio}
             gifterEmail={gifterEmail}
-            sendWelcomeMessages={sendWelcomeMessages}
-          />
+            sendWelcomeEmail={sendWelcomeEmail}
+            sendWelcomeSMS={sendWelcomeSMS}
+            selectedContributorsMobile={selectedContactsMobile}
+            selectedContributors={selectedContacts}
+            hasPaid={hasPaid}
+            setHasPaid={handlePaymentSuccess}
+            />
         ) : null
       }
 
@@ -1133,13 +1261,26 @@ useEffect(() => {
                   />
                   <Text>Pay $99 to make this e-book a physical book</Text>
                 </View>
+                  <TouchableOpacity 
+                    style={styles.button} 
+                    onPress={() => submitAndSendWelcomeMessageEmail(tableData)}
+                  >
+                    <Text style={styles.buttonText}>
+                      Email welcome message to selected contributors
+                    </Text>
+                  </TouchableOpacity>
+              
 
-                <TouchableOpacity 
-                style={styles.button} onPress={() => submitAndSendWelcomeMessage(tableData)}                >
-                <Text style={styles.buttonText}>
-                  Send welcome message to selected contributors
-                </Text>
-              </TouchableOpacity>
+             
+                  <TouchableOpacity 
+                    style={styles.button} 
+                    onPress={() => submitAndSendWelcomeMessageSMS(tableData)}
+                  >
+                    <Text style={styles.buttonText}>
+                      Text welcome message to selected contributors
+                    </Text>
+                  </TouchableOpacity>
+              
                   </View>
               </View>
               </View >
